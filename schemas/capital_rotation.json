@@ -1,0 +1,13 @@
+{
+  "timestamp": "",
+  "portfolio_value": 0,
+  "available_cash": 0,
+  "reserve_cash": 0,
+  "bot_allocations": [],
+  "rotation_trigger": "",
+  "portfolio_heat": 0,
+  "spot_allocation": 0,
+  "futures_allocation": 0,
+  "risk_level": "",
+  "notes": ""
+}
