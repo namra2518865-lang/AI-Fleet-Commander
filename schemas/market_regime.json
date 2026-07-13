@@ -1,0 +1,18 @@
+{
+  "timestamp": "",
+  "market_regime": "",
+  "confidence": 0,
+  "market_quality": 0,
+  "trend": "",
+  "volatility": "",
+  "btc_dominance": 0,
+  "funding": "",
+  "open_interest": "",
+  "preferred_bots": [],
+  "paused_bots": [],
+  "capital_utilization": 0,
+  "spot_bias": "",
+  "futures_bias": "",
+  "risk_level": "",
+  "notes": ""
+}
