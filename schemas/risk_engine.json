@@ -1,0 +1,15 @@
+{
+  "timestamp": "",
+  "risk_level": "",
+  "portfolio_heat": 0,
+  "daily_loss": 0,
+  "weekly_loss": 0,
+  "monthly_loss": 0,
+  "drawdown": 0,
+  "coin_exposure": 0,
+  "sector_exposure": 0,
+  "correlation": 0,
+  "max_position_size": 0,
+  "emergency_mode": false,
+  "notes": ""
+}
