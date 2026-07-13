@@ -1,0 +1,13 @@
+{
+  "timestamp": "",
+  "portfolio_state": "",
+  "portfolio_heat": 0,
+  "capital_in_use": 0,
+  "reserve_capital": 0,
+  "approved_bots": [],
+  "paused_bots": [],
+  "approved_opportunities": [],
+  "rejected_opportunities": [],
+  "risk_level": "",
+  "notes": ""
+}
