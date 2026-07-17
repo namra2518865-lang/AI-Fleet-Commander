@@ -17,6 +17,7 @@ import os
 import sys
 
 from dashboard.daily_pnl import compute_daily_pnl
+from dashboard.emailer import send_report
 from dashboard.exchange_reader import read_all_bot_balances
 from dashboard.fleet_config import FLEET
 from dashboard.guard_status import read_guard_status
@@ -39,6 +40,10 @@ def main(argv=None):
                         help="skip live exchange lookups; use state files only")
     parser.add_argument("--root", default=None,
                         help="override FLEET_ROOT (dir holding /bot*, /newsradar)")
+    parser.add_argument("--email", action="store_true",
+                        help="send the report as an HTML email via Resend")
+    parser.add_argument("--quiet", action="store_true",
+                        help="don't print the terminal report (use with --email in cron)")
     args = parser.parse_args(argv)
 
     _load_dotenv()
@@ -58,7 +63,13 @@ def main(argv=None):
     else:
         bot_balances = read_all_bot_balances(FLEET, fleet_root)
 
-    build_report(bot_states, bot_balances, guard_status, daily)
+    if not args.quiet:
+        build_report(bot_states, bot_balances, guard_status, daily)
+
+    if args.email:
+        ok, msg = send_report(bot_states, bot_balances, guard_status,
+                              daily, fleet_root)
+        print(f"[email] {msg}", file=sys.stderr if not ok else sys.stdout)
 
 
 if __name__ == "__main__":
