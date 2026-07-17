@@ -23,6 +23,7 @@ from dashboard.fleet_config import FLEET
 from dashboard.guard_status import read_guard_status
 from dashboard.report import build_report
 from dashboard.state_reader import read_all_states
+from dashboard.trades_log import all_time_realized
 
 
 def _load_dotenv():
@@ -54,6 +55,16 @@ def main(argv=None):
               f"(set FLEET_ROOT in .env or pass --root)", file=sys.stderr)
 
     bot_states = read_all_states(fleet_root)
+
+    # For bots whose state has no cumulative realized P&L (e.g. DCA bot 7),
+    # derive Total P&L from the all-time sum in their trades.csv.
+    _by_n = {b["n"]: b for b in FLEET}
+    for bs in bot_states:
+        if bs.get("realized_pnl") is None:
+            alltime = all_time_realized(_by_n.get(bs["n"], {}), fleet_root)
+            if alltime is not None:
+                bs["realized_pnl"] = alltime
+
     guard_status = read_guard_status(fleet_root)
 
     daily = compute_today(bot_states, FLEET, fleet_root)

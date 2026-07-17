@@ -122,6 +122,40 @@ def parse_today_trades(bot, fleet_root, today=None):
     return events
 
 
+def all_time_realized(bot, fleet_root):
+    """Sum of ALL realized P&L in a bot's trades.csv (every date), or None.
+
+    Used as a cumulative Total P&L for bots whose state file has no
+    stats.realizedPnl (e.g. the DCA bot).
+    """
+    state = bot.get("state") or ""
+    bdir = os.path.dirname(state)
+    if not bdir or not fleet_root:
+        return None
+    path = os.path.join(fleet_root, bdir, "trades.csv")
+    if not os.path.exists(path):
+        return None
+    total, found = 0.0, False
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for row in csv.reader(f):
+                if not row:
+                    continue
+                col0 = row[0].strip()
+                if "T" in col0:
+                    ev = _parse_compact_row(row)
+                elif _DATE_ONLY_RE.match(col0):
+                    ev = _parse_standard_row(row)
+                else:
+                    ev = None
+                if ev and ev["pnl"] is not None:
+                    total += ev["pnl"]
+                    found = True
+    except OSError:
+        return None
+    return round(total, 4) if found else None
+
+
 def summarize_trades(events, partials_as_trades=False):
     """Reduce today's events to per-bot figures.
 
