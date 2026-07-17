@@ -8,6 +8,7 @@ are needed. Uses only the standard library (urllib) to POST to Resend.
 
 import json
 import os
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -168,5 +169,12 @@ def send_report(bot_states, bot_balances, guard_status, daily_pnl, fleet_root=No
             if 200 <= resp.status < 300:
                 return True, f"email sent to {email_to}"
             return False, f"resend HTTP {resp.status}"
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "ignore")[:300]
+        except Exception:
+            pass
+        return False, f"HTTP {e.code} (from={email_from}, to={email_to}): {body}"
     except Exception as e:
         return False, f"send failed: {str(e)[:80]}"
