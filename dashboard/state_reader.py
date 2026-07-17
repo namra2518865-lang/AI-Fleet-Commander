@@ -78,6 +78,7 @@ def read_bot_state(bot, fleet_root):
         "exchange": bot["exchange"],
         "market": bot["market"],
         "strategy": bot["strategy"],
+        "paper": bot.get("paper", False),
         "available": False,
         "note": "",
         "open_positions": [],
@@ -86,6 +87,7 @@ def read_bot_state(bot, fleet_root):
         "realized_pnl": None,
         "wins": None,
         "losses": None,
+        "total_closed": None,
     }
 
     if not bot.get("state"):
@@ -115,6 +117,11 @@ def read_bot_state(bot, fleet_root):
     status["day_pnl"] = stats.get("dayPnl")  # None for bots that don't track it
     status["wins"] = stats.get("wins")
     status["losses"] = stats.get("losses")
+    # full closed round-trips (partials are handled within a trade, not counted
+    # here); grid bots track sells instead of totalClosed.
+    status["total_closed"] = stats.get("totalClosed")
+    if status["total_closed"] is None:
+        status["total_closed"] = stats.get("sells")
     status["last_run"] = data.get("lastRun")
 
     return status

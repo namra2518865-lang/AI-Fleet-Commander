@@ -12,6 +12,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+from dashboard.daily_pnl import fleet_today_summary
+
 RESEND_URL = "https://api.resend.com/emails"
 DEFAULT_FROM = "Aquora Fleet Commander <onboarding@resend.dev>"
 
@@ -54,17 +56,22 @@ def _money_html(v):
     return f"${v:,.2f}" if v is not None else '<span style="color:#888">-</span>'
 
 
-def render_html(bot_states, bot_balances, guard_status, daily_pnl):
+def render_html(bot_states, bot_balances, guard_status, daily):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     bot_balances = bot_balances or {}
-    daily_pnl = daily_pnl or {}
+    daily = daily or {}
 
     def bal(n):
         return (bot_balances.get(n) or {}).get("usdt")
 
-    total_bal = sum(v for v in (bal(b["n"]) for b in bot_states) if v)
-    total_day = sum(v for v in (daily_pnl.get(b["n"]) for b in bot_states) if v)
-    in_trade = sum(1 for b in bot_states if b["available"] and b["open_positions"])
+    def net_for(n):
+        return (daily.get(n) or {}).get("net")
+
+    total_bal = sum(v for v in (bal(b["n"]) for b in bot_states if not b.get("paper")) if v)
+    in_trade = sum(1 for b in bot_states
+                   if not b.get("paper") and b["available"] and b["open_positions"])
+    n_live = sum(1 for b in bot_states if not b.get("paper"))
+    summary = fleet_today_summary(bot_states, daily)
 
     def guard_badge(v):
         if v is None:
@@ -87,14 +94,24 @@ def render_html(bot_states, bot_balances, guard_status, daily_pnl):
             state = f'<span style="color:#1a9c4a;font-weight:600">IN TRADE: {syms}</span>'
         else:
             state = '<span style="color:#666">flat</span>'
+        name = bs["name"]
+        if bs.get("paper"):
+            name += ' <span style="background:#eee;color:#777;font-size:10px;' \
+                    'padding:1px 5px;border-radius:3px">PAPER</span>'
+        d = daily.get(n) or {}
+        wl = ""
+        if d.get("trades"):
+            wl = (f'<div style="font-size:11px;color:#888">{d["trades"]} trades'
+                  f', {d.get("wins", 0)}W/{d.get("losses", 0)}L</div>')
+        bg = "#faf7ef" if bs.get("paper") else "#fff"
         rows.append(f"""
-        <tr>
+        <tr style="background:{bg}">
           <td style="padding:6px 10px;border-bottom:1px solid #eee">{n}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee">{bs['name']}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee">{name}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#555">{bs['exchange']}/{bs['market']}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee">{state}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">{_money_html(bal(n))}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">{_pnl_html(daily_pnl.get(n))}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">{_pnl_html(net_for(n))}{wl}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">{_pnl_html(bs.get('realized_pnl'))}</td>
         </tr>""")
 
@@ -127,30 +144,41 @@ def render_html(bot_states, bot_balances, guard_status, daily_pnl):
     </thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
+  <div style="background:#fff;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;
+              padding:12px 22px;font-size:13px;color:#333">
+    <b>Today (live fleet):</b>&nbsp; Trades {summary['trades']} &nbsp;·&nbsp;
+    <span style="color:#1a9c4a">Wins {summary['wins']}</span> &nbsp;
+    <span style="color:#d13b3b">Losses {summary['losses']}</span> &nbsp;·&nbsp;
+    Profit {_pnl_html(summary['profit'])} &nbsp; Loss {_pnl_html(summary['loss'])}
+    &nbsp;·&nbsp; <b>Net</b> {_pnl_html(summary['net'])}
+  </div>
   <div style="background:#0f1720;color:#fff;border-radius:0 0 10px 10px;padding:14px 22px;font-size:13px">
-    <b>Bots in trade:</b> {in_trade}/{len(bot_states)} &nbsp;·&nbsp;
-    <b>Total live USDT:</b> ${total_bal:,.2f} &nbsp;·&nbsp;
-    <b>Today:</b> {_pnl_html(total_day)}
+    <b>Bots in trade:</b> {in_trade}/{n_live} &nbsp;·&nbsp;
+    <b>Total live USDT:</b> ${total_bal:,.2f}
   </div>
   <div style="color:#9aa4af;font-size:11px;text-align:center;padding:12px">
+    Bot 3 (EMA-Pullback) is PAPER — shown but excluded from live totals.<br>
     Read-only fleet monitor · not financial advice
   </div>
 </div>
 </body></html>"""
 
 
-def send_report(bot_states, bot_balances, guard_status, daily_pnl, fleet_root=None):
+def send_report(bot_states, bot_balances, guard_status, daily, fleet_root=None):
     """Render + send the report. Returns (ok, message)."""
     api_key, email_to, email_from = _resend_config(fleet_root)
     if not api_key or not email_to:
         return False, "no RESEND_API_KEY / EMAIL_TO found"
 
-    total_day = sum(v for v in (daily_pnl or {}).values() if v)
-    day_txt = f"{'+' if total_day >= 0 else '-'}${abs(total_day):,.2f}"
-    in_trade = sum(1 for b in bot_states if b["available"] and b["open_positions"])
-    subject = f"Aquora Fleet — {in_trade} in trade, today {day_txt}"
+    summary = fleet_today_summary(bot_states, daily or {})
+    net = summary["net"]
+    day_txt = f"{'+' if net >= 0 else '-'}${abs(net):,.2f}"
+    in_trade = sum(1 for b in bot_states
+                   if not b.get("paper") and b["available"] and b["open_positions"])
+    subject = (f"Aquora Fleet — {in_trade} in trade, "
+               f"{summary['trades']} trades today, net {day_txt}")
 
-    html = render_html(bot_states, bot_balances, guard_status, daily_pnl)
+    html = render_html(bot_states, bot_balances, guard_status, daily)
     payload = json.dumps({
         "from": email_from,
         "to": [email_to],

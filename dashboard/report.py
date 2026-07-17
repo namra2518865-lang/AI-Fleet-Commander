@@ -6,6 +6,8 @@ if it is not installed, so the report always prints.
 
 from datetime import datetime, timezone
 
+from dashboard.daily_pnl import fleet_today_summary
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -47,18 +49,31 @@ def _state_text(bot_state):
     return "flat"
 
 
-def build_report(bot_states, bot_balances, guard_status, daily_pnl=None):
+def _name_text(bs):
+    if bs.get("paper"):
+        return f"{bs['name']} [PAPER]"
+    return bs["name"]
+
+
+def build_report(bot_states, bot_balances, guard_status, daily=None):
     """Return the report as a string (also prints if rich is available)."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     bot_balances = bot_balances or {}
-    daily_pnl = daily_pnl or {}
+    daily = daily or {}
 
     def bal_for(n):
         return (bot_balances.get(n) or {}).get("usdt")
 
-    total_balance = sum(v for v in (bal_for(b["n"]) for b in bot_states) if v)
-    total_day = sum(v for v in (daily_pnl.get(b["n"]) for b in bot_states) if v)
-    in_trade = sum(1 for b in bot_states if b["available"] and b["open_positions"])
+    def net_for(n):
+        return (daily.get(n) or {}).get("net")
+
+    # Live totals EXCLUDE paper bots (bot 3)
+    total_balance = sum(
+        v for v in (bal_for(b["n"]) for b in bot_states if not b.get("paper")) if v
+    )
+    in_trade = sum(1 for b in bot_states
+                   if not b.get("paper") and b["available"] and b["open_positions"])
+    summary = fleet_today_summary(bot_states, daily)
 
     if RICH:
         console = Console(record=True)
@@ -91,22 +106,41 @@ def build_report(bot_states, bot_balances, guard_status, daily_pnl=None):
             if bal is None and binfo.get("note"):
                 bal_txt = f"[dim]{binfo['note'][:18]}[/dim]"
             t.add_row(
-                str(n), bs["name"], f"{bs['exchange']}/{bs['market']}",
+                str(n), _name_text(bs), f"{bs['exchange']}/{bs['market']}",
                 _state_text(bs), bal_txt,
-                _fmt_pnl(daily_pnl.get(n)),
-                _fmt_pnl(bs.get("realized_pnl")),
+                _fmt_pnl(net_for(n)), _fmt_pnl(bs.get("realized_pnl")),
             )
         console.print(t)
 
+        # ---- Today's activity (live fleet) ----
         console.print(
-            f"[bold]Bots in trade: {in_trade}/{len(bot_states)}"
-            f"   |   Total live USDT: {_fmt_money(total_balance)}"
-            f"   |   Today: {_fmt_pnl(total_day)}[/bold]"
+            f"[bold]Today (live):[/bold]  "
+            f"Trades {summary['trades']}  |  "
+            f"[green]Wins {summary['wins']}[/green]  "
+            f"[red]Losses {summary['losses']}[/red]  |  "
+            f"Profit {_fmt_pnl(summary['profit'])}  "
+            f"Loss {_fmt_pnl(summary['loss'])}  |  "
+            f"Net {_fmt_pnl(summary['net'])}"
         )
+        console.print(
+            f"[bold]Bots in trade: {in_trade}/{len(bot_states) - _paper_count(bot_states)}"
+            f"   |   Total live USDT: {_fmt_money(total_balance)}[/bold]"
+        )
+
+        # paper bots shown separately (not in live totals)
+        for bs in bot_states:
+            if bs.get("paper"):
+                d = daily.get(bs["n"]) or {}
+                console.print(
+                    f"[dim]PAPER — {bs['name']} (Bot {bs['n']}): "
+                    f"today {_fmt_pnl(d.get('net'))}, "
+                    f"total {_fmt_pnl(bs.get('realized_pnl'))} "
+                    f"(not counted in live totals)[/dim]"
+                )
         return console.export_text()
 
     # ---- plain-text fallback ----
-    lines = [f"AQUORA FLEET COMMANDER  |  {now}", "=" * 72]
+    lines = [f"AQUORA FLEET COMMANDER  |  {now}", "=" * 84]
     g = guard_status
     ks = g["kill_switch_active"]
     lines.append(
@@ -115,23 +149,36 @@ def build_report(bot_states, bot_balances, guard_status, daily_pnl=None):
         f"Kill:{'ACTIVE' if ks else 'armed' if ks is not None else 'unknown'}"
     )
     lines.append("-" * 84)
-    lines.append(
-        f"{'#':<3}{'Strategy':<20}{'Venue':<16}{'State':<20}"
-        f"{'Balance':>10}{'Day':>10}"
-    )
+    lines.append(f"{'#':<3}{'Strategy':<22}{'Venue':<16}{'State':<20}"
+                 f"{'Balance':>10}{'Day':>10}")
     for bs in bot_states:
-        state = _state_text(bs)
-        bal = bal_for(bs["n"])
         lines.append(
-            f"{bs['n']:<3}{bs['name']:<20}{bs['exchange']+'/'+bs['market']:<16}"
-            f"{state:<20}{_fmt_money(bal):>10}{_fmt_pnl(daily_pnl.get(bs['n'])):>10}"
+            f"{bs['n']:<3}{_name_text(bs):<22}{bs['exchange']+'/'+bs['market']:<16}"
+            f"{_state_text(bs):<20}{_fmt_money(bal_for(bs['n'])):>10}"
+            f"{_fmt_pnl(net_for(bs['n'])):>10}"
         )
     lines.append("-" * 84)
     lines.append(
-        f"Bots in trade: {in_trade}/{len(bot_states)}   "
-        f"Total live USDT: {_fmt_money(total_balance)}   "
-        f"Today: {_fmt_pnl(total_day)}"
+        f"Today (live): Trades {summary['trades']}  Wins {summary['wins']}  "
+        f"Losses {summary['losses']}  Profit {_fmt_pnl(summary['profit'])}  "
+        f"Loss {_fmt_pnl(summary['loss'])}  Net {_fmt_pnl(summary['net'])}"
     )
+    lines.append(
+        f"Bots in trade: {in_trade}/{len(bot_states) - _paper_count(bot_states)}   "
+        f"Total live USDT: {_fmt_money(total_balance)}"
+    )
+    for bs in bot_states:
+        if bs.get("paper"):
+            d = daily.get(bs["n"]) or {}
+            lines.append(
+                f"PAPER - {bs['name']} (Bot {bs['n']}): today "
+                f"{_fmt_pnl(d.get('net'))}, total {_fmt_pnl(bs.get('realized_pnl'))} "
+                f"(not in live totals)"
+            )
     text = "\n".join(lines)
     print(text)
     return text
+
+
+def _paper_count(bot_states):
+    return sum(1 for b in bot_states if b.get("paper"))

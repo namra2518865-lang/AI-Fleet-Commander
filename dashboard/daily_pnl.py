@@ -1,16 +1,16 @@
-"""Per-bot daily P&L.
+"""Per-bot daily activity: today's net P&L, trades, wins, losses.
 
-Bots expose a cumulative `stats.realizedPnl`, but only the grid bot tracks
-its own `dayPnl`. To get a daily figure for every bot uniformly, the
-dashboard snapshots each bot's cumulative realized P&L at the first run of
-each (UTC) day and reports:  daily = current_cumulative - start_of_day.
+Bots expose cumulative counters in stats (realizedPnl, totalClosed, wins,
+losses). To get today's figures the dashboard snapshots those counters at the
+first UTC-day run and reports the delta since. Only fully-closed trades move
+these counters (partial exits are handled within a trade), so wins/losses are
+counted only when a trade completes.
 
-If a bot reports its own `day_pnl` (grid), that authoritative value is used
-directly instead of the snapshot diff.
+If a bot reports its own dayPnl (grid), that value is used for net directly.
 
-The snapshot is a small JSON file; nothing here is a secret. For the daily
-number to capture a full day, the dashboard should run regularly (cron) so
-the baseline is taken near the day boundary.
+The snapshot is a small JSON file (gitignored). For the figures to cover a
+full day, the dashboard should run regularly (cron) so the baseline is taken
+near the day boundary.
 """
 
 import json
@@ -18,6 +18,9 @@ import os
 from datetime import datetime, timezone
 
 SNAPSHOT_NAME = "dashboard_daily_snapshot.json"
+
+# cumulative metrics tracked per bot for daily deltas
+_METRICS = ("realized_pnl", "total_closed", "wins", "losses")
 
 
 def _today_utc():
@@ -40,27 +43,32 @@ def _save(path, data):
         pass
 
 
-def compute_daily_pnl(bot_states, fleet_root=None, snapshot_path=None):
-    """Return {bot_n: daily_pnl_or_None}. Updates the snapshot file."""
+def _metrics_now(bot_states):
+    """Current cumulative metrics per bot, keyed by str(n)."""
+    out = {}
+    for bs in bot_states:
+        m = {k: bs.get(k) for k in _METRICS if bs.get(k) is not None}
+        if m:
+            out[str(bs["n"])] = m
+    return out
+
+
+def compute_daily(bot_states, fleet_root=None, snapshot_path=None):
+    """Return {bot_n: {net, trades, wins, losses}} for today.
+
+    Any figure that can't be derived is None.
+    """
     if snapshot_path is None:
-        base_dir = fleet_root or "."
-        snapshot_path = os.path.join(base_dir, SNAPSHOT_NAME)
+        snapshot_path = os.path.join(fleet_root or ".", SNAPSHOT_NAME)
 
     today = _today_utc()
-    # current cumulative realized P&L per bot (only where known)
-    current = {
-        str(bs["n"]): bs["realized_pnl"]
-        for bs in bot_states
-        if bs.get("realized_pnl") is not None
-    }
+    current = _metrics_now(bot_states)
 
     snap = _load(snapshot_path)
     if not snap or snap.get("date") != today:
-        # first run of the day (or no snapshot yet): reset the baseline
         snap = {"date": today, "baseline": current}
         _save(snapshot_path, snap)
     else:
-        # new bots that appeared mid-day get a baseline now
         changed = False
         for k, v in current.items():
             if k not in snap["baseline"]:
@@ -70,15 +78,58 @@ def compute_daily_pnl(bot_states, fleet_root=None, snapshot_path=None):
             _save(snapshot_path, snap)
 
     baseline = snap.get("baseline", {})
-    daily = {}
+
+    def delta(key, metric):
+        cur = current.get(key, {}).get(metric)
+        base = baseline.get(key, {}).get(metric)
+        if cur is None or base is None:
+            return None
+        return round(cur - base, 4) if metric == "realized_pnl" else int(cur - base)
+
+    result = {}
     for bs in bot_states:
         n = bs["n"]
         key = str(n)
+        # net: prefer the bot's own dayPnl (grid), else realizedPnl delta
         if bs.get("day_pnl") is not None:
-            # bot tracks its own daily figure (authoritative)
-            daily[n] = round(bs["day_pnl"], 4)
-        elif key in current and key in baseline and baseline[key] is not None:
-            daily[n] = round(current[key] - baseline[key], 4)
+            net = round(bs["day_pnl"], 4)
         else:
-            daily[n] = None
-    return daily
+            net = delta(key, "realized_pnl")
+        result[n] = {
+            "net": net,
+            "trades": delta(key, "total_closed"),
+            "wins": delta(key, "wins"),
+            "losses": delta(key, "losses"),
+        }
+    return result
+
+
+def fleet_today_summary(bot_states, daily, exclude_paper=True):
+    """Aggregate today's activity across the LIVE fleet (paper bots excluded).
+
+    Returns trades, wins, losses, gross profit (sum of winning bots' net),
+    gross loss (sum of losing bots' net), and net.
+    """
+    trades = wins = losses = 0
+    profit = loss = 0.0
+    for bs in bot_states:
+        if exclude_paper and bs.get("paper"):
+            continue
+        d = daily.get(bs["n"]) or {}
+        if d.get("trades"):
+            trades += d["trades"]
+        if d.get("wins"):
+            wins += d["wins"]
+        if d.get("losses"):
+            losses += d["losses"]
+        net = d.get("net")
+        if net:
+            if net > 0:
+                profit += net
+            else:
+                loss += net
+    return {
+        "trades": trades, "wins": wins, "losses": losses,
+        "profit": round(profit, 2), "loss": round(loss, 2),
+        "net": round(profit + loss, 2),
+    }

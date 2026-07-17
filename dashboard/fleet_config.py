@@ -25,7 +25,7 @@ FLEET = [
      "never_paused": False, "guard": "trend"},
     {"n": 3,  "name": "EMA-Pullback",         "exchange": "bybit",  "market": "spot",
      "strategy": "EMA-Pullback (15m)",   "state": "bot3/position.json",   "shape": "positions",
-     "never_paused": False, "guard": "trend", "retire": True},
+     "never_paused": False, "guard": "trend", "retire": True, "paper": True},
     {"n": 4,  "name": "Trend Long+Short",     "exchange": "bybit",  "market": "futures",
      "strategy": "Trend L/S (1H)",       "state": "bot4/position.json",   "shape": "positions",
      "never_paused": False, "guard": "trend"},
