@@ -65,7 +65,15 @@ def compute_daily(bot_states, fleet_root=None, snapshot_path=None):
     current = _metrics_now(bot_states)
 
     snap = _load(snapshot_path)
-    if not snap or snap.get("date") != today:
+    # valid = today's snapshot in the new per-metric dict format
+    valid = (
+        isinstance(snap, dict)
+        and snap.get("date") == today
+        and isinstance(snap.get("baseline"), dict)
+        and all(isinstance(v, dict) for v in snap["baseline"].values())
+    )
+    if not valid:
+        # no/stale/old-format snapshot -> start today's baseline fresh
         snap = {"date": today, "baseline": current}
         _save(snapshot_path, snap)
     else:
@@ -80,11 +88,14 @@ def compute_daily(bot_states, fleet_root=None, snapshot_path=None):
     baseline = snap.get("baseline", {})
 
     def delta(key, metric):
-        cur = current.get(key, {}).get(metric)
-        base = baseline.get(key, {}).get(metric)
-        if cur is None or base is None:
+        base = baseline.get(key)
+        if not isinstance(base, dict):
             return None
-        return round(cur - base, 4) if metric == "realized_pnl" else int(cur - base)
+        cur = current.get(key, {}).get(metric)
+        bv = base.get(metric)
+        if cur is None or bv is None:
+            return None
+        return round(cur - bv, 4) if metric == "realized_pnl" else int(cur - bv)
 
     result = {}
     for bs in bot_states:
