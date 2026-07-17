@@ -55,6 +55,26 @@ def _name_text(bs):
     return bs["name"]
 
 
+def _event_str(e):
+    tag = " (partial)" if e.get("partial") else ""
+    return f"{e['symbol']} {_fmt_pnl(e.get('pnl'))}{tag}"
+
+
+def _bot_trades_line(bs, d):
+    """One line listing a bot's today trades, or None if it didn't trade."""
+    events = (d or {}).get("events")
+    if not events:
+        return None
+    parts = ", ".join(_event_str(e) for e in events)
+    wl = ""
+    if d.get("wins") is not None:
+        wl = f" ({d.get('wins', 0)}W/{d.get('losses', 0)}L)"
+    tail = f"{d.get('trades', 0)} trade(s){wl}"
+    if d.get("partials"):
+        tail += f" + {d['partials']} partial"
+    return f"Bot {bs['n']} {bs['name']}: {parts}  ->  {tail}, net {_fmt_pnl(d.get('net'))}"
+
+
 def build_report(bot_states, bot_balances, guard_status, daily=None):
     """Return the report as a string (also prints if rich is available)."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -70,6 +90,9 @@ def build_report(bot_states, bot_balances, guard_status, daily=None):
     # Live totals EXCLUDE paper bots (bot 3)
     total_balance = sum(
         v for v in (bal_for(b["n"]) for b in bot_states if not b.get("paper")) if v
+    )
+    total_profit_alltime = sum(
+        v for v in (b.get("realized_pnl") for b in bot_states if not b.get("paper")) if v
     )
     in_trade = sum(1 for b in bot_states
                    if not b.get("paper") and b["available"] and b["open_positions"])
@@ -112,9 +135,18 @@ def build_report(bot_states, bot_balances, guard_status, daily=None):
             )
         console.print(t)
 
+        # ---- Today's trades (per bot, from trades.csv) ----
+        trade_lines = [ln for ln in
+                       (_bot_trades_line(bs, daily.get(bs["n"])) for bs in bot_states)
+                       if ln]
+        if trade_lines:
+            console.print("\n[bold]Today's Trades[/bold]")
+            for ln in trade_lines:
+                console.print(f"  {ln}")
+
         # ---- Today's activity (live fleet) ----
         console.print(
-            f"[bold]Today (live):[/bold]  "
+            f"\n[bold]Today (live):[/bold]  "
             f"Trades {summary['trades']}  |  "
             f"[green]Wins {summary['wins']}[/green]  "
             f"[red]Losses {summary['losses']}[/red]  |  "
@@ -124,7 +156,8 @@ def build_report(bot_states, bot_balances, guard_status, daily=None):
         )
         console.print(
             f"[bold]Bots in trade: {in_trade}/{len(bot_states) - _paper_count(bot_states)}"
-            f"   |   Total live USDT: {_fmt_money(total_balance)}[/bold]"
+            f"   |   Total live USDT: {_fmt_money(total_balance)}"
+            f"   |   Total profit (all-time): {_fmt_pnl(total_profit_alltime)}[/bold]"
         )
 
         # paper bots shown separately (not in live totals)
@@ -158,6 +191,14 @@ def build_report(bot_states, bot_balances, guard_status, daily=None):
             f"{_fmt_pnl(net_for(bs['n'])):>10}"
         )
     lines.append("-" * 84)
+    trade_lines = [ln for ln in
+                   (_bot_trades_line(bs, daily.get(bs["n"])) for bs in bot_states)
+                   if ln]
+    if trade_lines:
+        lines.append("Today's Trades:")
+        for ln in trade_lines:
+            lines.append(f"  {ln}")
+        lines.append("-" * 84)
     lines.append(
         f"Today (live): Trades {summary['trades']}  Wins {summary['wins']}  "
         f"Losses {summary['losses']}  Profit {_fmt_pnl(summary['profit'])}  "
@@ -165,7 +206,8 @@ def build_report(bot_states, bot_balances, guard_status, daily=None):
     )
     lines.append(
         f"Bots in trade: {in_trade}/{len(bot_states) - _paper_count(bot_states)}   "
-        f"Total live USDT: {_fmt_money(total_balance)}"
+        f"Total live USDT: {_fmt_money(total_balance)}   "
+        f"Total profit (all-time): {_fmt_pnl(total_profit_alltime)}"
     )
     for bs in bot_states:
         if bs.get("paper"):

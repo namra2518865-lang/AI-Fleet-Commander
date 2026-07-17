@@ -68,6 +68,8 @@ def render_html(bot_states, bot_balances, guard_status, daily):
         return (daily.get(n) or {}).get("net")
 
     total_bal = sum(v for v in (bal(b["n"]) for b in bot_states if not b.get("paper")) if v)
+    total_profit = sum(v for v in (b.get("realized_pnl") for b in bot_states
+                                   if not b.get("paper")) if v)
     in_trade = sum(1 for b in bot_states
                    if not b.get("paper") and b["available"] and b["open_positions"])
     n_live = sum(1 for b in bot_states if not b.get("paper"))
@@ -115,6 +117,37 @@ def render_html(bot_states, bot_balances, guard_status, daily):
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">{_pnl_html(bs.get('realized_pnl'))}</td>
         </tr>""")
 
+    # ---- Today's trades detail (per bot, from trades.csv) ----
+    trade_blocks = []
+    for bs in bot_states:
+        d = daily.get(bs["n"]) or {}
+        events = d.get("events")
+        if not events:
+            continue
+        items = []
+        for e in events:
+            tag = ' <span style="color:#999">(partial)</span>' if e.get("partial") else ""
+            items.append(f"{e['symbol']} {_pnl_html(e.get('pnl'))}{tag}")
+        wl = ""
+        if d.get("wins") is not None:
+            wl = f" ({d.get('wins', 0)}W/{d.get('losses', 0)}L)"
+        extra = f" + {d['partials']} partial" if d.get("partials") else ""
+        paper_tag = ' <span style="color:#999">[PAPER]</span>' if bs.get("paper") else ""
+        trade_blocks.append(
+            f'<div style="padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px">'
+            f'<b>Bot {bs["n"]} {bs["name"]}{paper_tag}</b>: {", ".join(items)}'
+            f'<span style="color:#555"> &rarr; {d.get("trades", 0)} trade(s){wl}{extra}, '
+            f'net {_pnl_html(d.get("net"))}</span></div>'
+        )
+    trades_section = ""
+    if trade_blocks:
+        trades_section = (
+            '<div style="background:#fff;border-left:1px solid #e5e7eb;'
+            'border-right:1px solid #e5e7eb;padding:12px 22px">'
+            '<div style="font-weight:700;font-size:13px;margin-bottom:6px">'
+            "Today's Trades</div>" + "".join(trade_blocks) + "</div>"
+        )
+
     return f"""<!DOCTYPE html>
 <html><body style="margin:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
 <div style="max-width:720px;margin:0 auto;padding:24px">
@@ -144,6 +177,7 @@ def render_html(bot_states, bot_balances, guard_status, daily):
     </thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
+  {trades_section}
   <div style="background:#fff;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;
               padding:12px 22px;font-size:13px;color:#333">
     <b>Today (live fleet):</b>&nbsp; Trades {summary['trades']} &nbsp;·&nbsp;
@@ -154,7 +188,8 @@ def render_html(bot_states, bot_balances, guard_status, daily):
   </div>
   <div style="background:#0f1720;color:#fff;border-radius:0 0 10px 10px;padding:14px 22px;font-size:13px">
     <b>Bots in trade:</b> {in_trade}/{n_live} &nbsp;·&nbsp;
-    <b>Total live USDT:</b> ${total_bal:,.2f}
+    <b>Total live USDT:</b> ${total_bal:,.2f} &nbsp;·&nbsp;
+    <b>Total profit (all-time):</b> {_pnl_html(total_profit)}
   </div>
   <div style="color:#9aa4af;font-size:11px;text-align:center;padding:12px">
     Bot 3 (EMA-Pullback) is PAPER — shown but excluded from live totals.<br>

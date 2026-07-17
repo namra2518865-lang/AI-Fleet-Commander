@@ -115,6 +115,30 @@ def compute_daily(bot_states, fleet_root=None, snapshot_path=None):
     return result
 
 
+def compute_today(bot_states, fleet, fleet_root=None, snapshot_path=None):
+    """Per-bot today figures, preferring trades.csv detail over stats deltas.
+
+    Returns {bot_n: {net, trades, wins, losses, partials, events}}. `events`
+    is the per-trade list from trades.csv (None if only stats were available).
+    """
+    from dashboard.trades_log import parse_today_trades, summarize_trades
+
+    stats_daily = compute_daily(bot_states, fleet_root, snapshot_path)
+    by_n = {b["n"]: b for b in fleet}
+
+    result = {}
+    for bs in bot_states:
+        n = bs["n"]
+        base = dict(stats_daily.get(n) or {})
+        base.setdefault("partials", None)
+        base.setdefault("events", None)
+        events = parse_today_trades(by_n.get(n, {}), fleet_root)
+        if events is not None:
+            base.update(summarize_trades(events))  # trades.csv wins over stats
+        result[n] = base
+    return result
+
+
 def fleet_today_summary(bot_states, daily, exclude_paper=True):
     """Aggregate today's activity across the LIVE fleet (paper bots excluded).
 
