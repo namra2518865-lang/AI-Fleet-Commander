@@ -1,0 +1,2 @@
+# AI Fleet Commander
+# Currently standard-library only. Add third-party packages here as needed.
