@@ -60,6 +60,21 @@ def _open_positions_from_grid_shape(data):
     return open_pos
 
 
+def _open_positions_from_dca_shape(data):
+    """DCA ladder shape (bot 7): one accumulating position when active."""
+    if data.get("active") and (data.get("totalBaseQty") or 0) > 0:
+        return [{
+            "symbol": data.get("pair", "?"),
+            "side": "long",
+            "entry": data.get("avgEntry", 0),
+            "qty": data.get("totalBaseQty", 0),
+            "stop": data.get("trailStop") or data.get("breakevenStop") or 0,
+            "booked_pnl": 0,
+            "levels": len(data.get("filledLevels") or []),
+        }]
+    return []
+
+
 def _detect_shape(data, hint):
     """Auto-detect the state-file shape from its keys; hint is a fallback."""
     if isinstance(data, dict):
@@ -67,6 +82,8 @@ def _detect_shape(data, hint):
             return "grid"
         if "positions" in data:
             return "positions"
+        if "totalBaseQty" in data or "filledLevels" in data:
+            return "dca"
     return hint
 
 
@@ -107,6 +124,8 @@ def read_bot_state(bot, fleet_root):
         status["open_positions"] = _open_positions_from_grid_shape(data)
     elif shape == "positions":
         status["open_positions"] = _open_positions_from_positions_shape(data)
+    elif shape == "dca":
+        status["open_positions"] = _open_positions_from_dca_shape(data)
     else:
         status["note"] = "unknown state shape"
 

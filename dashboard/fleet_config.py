@@ -36,7 +36,7 @@ FLEET = [
      "strategy": "Donchian 1D long",     "state": "bot6/position.json",   "shape": "positions",
      "never_paused": False, "guard": "trend"},
     {"n": 7,  "name": "DCA Capitulation",     "exchange": "okx",    "market": "spot",
-     "strategy": "DCA Ladder ETH (4H)",  "state": "bot7/position.json",   "shape": "positions",
+     "strategy": "DCA Ladder ETH (4H)",  "state": "bot7/position.json",   "shape": "dca",
      "never_paused": True,  "guard": None},
     {"n": 8,  "name": "Darvas Box v2",        "exchange": "bingx",  "market": "futures",
      "strategy": "Darvas Box (4H)",      "state": "bot8/position.json",   "shape": "positions",
