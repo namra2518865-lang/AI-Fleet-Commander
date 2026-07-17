@@ -157,7 +157,20 @@ def read_exchange(exchange, fleet_root=None):
         client = getattr(ccxt, _CCXT_CLASS[exchange])(creds)
         balance = client.fetch_balance()
         usdt = balance.get("total", {}).get("USDT")
-        out["usdt"] = round(usdt, 2) if usdt is not None else None
+
+        # If the default (spot) wallet is empty, the funds may be in the
+        # futures/swap wallet (e.g. BingX futures bot). Check that too.
+        if not usdt:
+            try:
+                swap = client.fetch_balance({"type": "swap"})
+                swap_usdt = swap.get("total", {}).get("USDT")
+                if swap_usdt:
+                    usdt = swap_usdt
+                    out["note"] = "swap wallet"
+            except Exception:
+                pass
+
+        out["usdt"] = round(usdt, 2) if usdt else None
 
         if client.has.get("fetchPositions"):
             try:
