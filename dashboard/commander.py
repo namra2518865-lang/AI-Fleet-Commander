@@ -16,8 +16,8 @@ import argparse
 import os
 import sys
 
-from dashboard.exchange_reader import read_all_exchanges
-from dashboard.fleet_config import EXCHANGES
+from dashboard.exchange_reader import read_all_bot_balances
+from dashboard.fleet_config import FLEET
 from dashboard.guard_status import read_guard_status
 from dashboard.report import build_report
 from dashboard.state_reader import read_all_states
@@ -51,13 +51,11 @@ def main(argv=None):
     guard_status = read_guard_status(fleet_root)
 
     if args.no_exchange:
-        exchange_data = {ex: {"exchange": ex, "available": False,
-                              "note": "skipped (--no-exchange)", "usdt": None,
-                              "open_positions": []} for ex in EXCHANGES}
+        bot_balances = {}
     else:
-        exchange_data = read_all_exchanges(EXCHANGES, fleet_root)
+        bot_balances = read_all_bot_balances(FLEET, fleet_root)
 
-    build_report(bot_states, exchange_data, guard_status)
+    build_report(bot_states, bot_balances, guard_status)
 
 
 if __name__ == "__main__":

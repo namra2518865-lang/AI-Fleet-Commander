@@ -197,3 +197,75 @@ def read_exchange(exchange, fleet_root=None):
 def read_all_exchanges(exchanges, fleet_root=None):
     _force_ipv4()
     return {ex: read_exchange(ex, fleet_root) for ex in exchanges}
+
+
+# ---- per-bot balances (each bot's own key + its own wallet type) ----
+
+def _exchange_var_names(exchange):
+    src = _BOT_KEY_SOURCE.get(exchange)
+    if not src:
+        return None
+    names = {"key": src["key"], "secret": src["secret"]}
+    if "password" in src:
+        names["password"] = src["password"]
+    return names
+
+
+def _bot_dir(bot):
+    """Derive the bot's dir (e.g. 'bot2') from its state path."""
+    state = bot.get("state") or ""
+    return os.path.dirname(state) or None
+
+
+def read_bot_balance(bot, fleet_root):
+    """Live USDT for one bot, from its own .env key + correct wallet type.
+
+    Futures bots are queried on the swap wallet, spot bots on the spot
+    wallet. Falls back to the shared per-exchange key if the bot's own
+    .env has no key.
+    """
+    out = {"usdt": None, "note": "", "source": None}
+    if not CCXT_AVAILABLE:
+        out["note"] = "ccxt not installed"
+        return out
+
+    exchange = bot["exchange"]
+    names = _exchange_var_names(exchange)
+    bdir = _bot_dir(bot)
+    if not names or exchange not in _CCXT_CLASS:
+        out["note"] = "no key mapping"
+        return out
+
+    creds, source = None, None
+    if bdir and fleet_root:
+        env = _parse_env_file(os.path.join(fleet_root, bdir, ".env"))
+        key, secret = env.get(names["key"]), env.get(names["secret"])
+        if key and secret:
+            creds = {"apiKey": key, "secret": secret, "enableRateLimit": True}
+            if "password" in names and env.get(names["password"]):
+                creds["password"] = env[names["password"]]
+            source = f"{bdir}/.env"
+    if creds is None:  # fall back to shared per-exchange key
+        creds, source = _creds(exchange, fleet_root)
+    if creds is None:
+        out["note"] = "no keys"
+        return out
+    out["source"] = source
+
+    acct_type = "swap" if bot["market"] == "futures" else "spot"
+    try:
+        client = getattr(ccxt, _CCXT_CLASS[exchange])(creds)
+        try:
+            bal = client.fetch_balance({"type": acct_type})
+        except Exception:
+            bal = client.fetch_balance()
+        usdt = bal.get("total", {}).get("USDT")
+        out["usdt"] = round(usdt, 2) if usdt else None
+    except Exception as e:
+        out["note"] = f"error: {str(e)[:50]}"
+    return out
+
+
+def read_all_bot_balances(fleet, fleet_root=None):
+    _force_ipv4()
+    return {bot["n"]: read_bot_balance(bot, fleet_root) for bot in fleet}
