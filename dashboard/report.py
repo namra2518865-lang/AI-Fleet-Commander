@@ -60,12 +60,18 @@ def _event_str(e):
     return f"{e['symbol']} {_fmt_pnl(e.get('pnl'))}{tag}"
 
 
+_MAX_EVENTS_SHOWN = 12
+
+
 def _bot_trades_line(bs, d):
     """One line listing a bot's today trades, or None if it didn't trade."""
     events = (d or {}).get("events")
     if not events:
         return None
-    parts = ", ".join(_event_str(e) for e in events)
+    shown = events[:_MAX_EVENTS_SHOWN]
+    parts = ", ".join(_event_str(e) for e in shown)
+    if len(events) > _MAX_EVENTS_SHOWN:
+        parts += f", +{len(events) - _MAX_EVENTS_SHOWN} more"
     wl = ""
     if d.get("wins") is not None:
         wl = f" ({d.get('wins', 0)}W/{d.get('losses', 0)}L)"

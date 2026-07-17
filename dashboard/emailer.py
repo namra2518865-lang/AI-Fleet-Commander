@@ -125,9 +125,11 @@ def render_html(bot_states, bot_balances, guard_status, daily):
         if not events:
             continue
         items = []
-        for e in events:
+        for e in events[:12]:
             tag = ' <span style="color:#999">(partial)</span>' if e.get("partial") else ""
             items.append(f"{e['symbol']} {_pnl_html(e.get('pnl'))}{tag}")
+        if len(events) > 12:
+            items.append(f'<span style="color:#999">+{len(events) - 12} more</span>')
         wl = ""
         if d.get("wins") is not None:
             wl = f" ({d.get('wins', 0)}W/{d.get('losses', 0)}L)"

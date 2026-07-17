@@ -132,9 +132,11 @@ def compute_today(bot_states, fleet, fleet_root=None, snapshot_path=None):
         base = dict(stats_daily.get(n) or {})
         base.setdefault("partials", None)
         base.setdefault("events", None)
-        events = parse_today_trades(by_n.get(n, {}), fleet_root)
+        cfg = by_n.get(n, {})
+        events = parse_today_trades(cfg, fleet_root)
         if events is not None:
-            base.update(summarize_trades(events))  # trades.csv wins over stats
+            flag = cfg.get("count_partials_as_trades", False)
+            base.update(summarize_trades(events, flag))  # trades.csv wins
         result[n] = base
     return result
 

@@ -19,7 +19,7 @@ State-file shape is auto-detected by the reader (grid vs positions); the
 FLEET = [
     {"n": 1,  "name": "Grid Range-Scalper",   "exchange": "bitget", "market": "spot",
      "strategy": "Grid (1H)",            "state": "bot/position.json",    "shape": "grid",
-     "never_paused": False, "guard": "grid"},
+     "never_paused": False, "guard": "grid", "count_partials_as_trades": True},
     {"n": 2,  "name": "Trend-Pullback v2",    "exchange": "binance", "market": "spot",
      "strategy": "Trend-Pullback (4H)",  "state": "bot2/position.json",   "shape": "positions",
      "never_paused": False, "guard": "trend"},
