@@ -160,8 +160,15 @@ def send_report(bot_states, bot_balances, guard_status, daily_pnl, fleet_root=No
 
     req = urllib.request.Request(
         RESEND_URL, data=payload,
-        headers={"Authorization": f"Bearer {api_key}",
-                 "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            # Resend sits behind Cloudflare, which blocks the default
+            # Python-urllib User-Agent (error 1010). Send a normal UA.
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+        },
         method="POST",
     )
     try:
