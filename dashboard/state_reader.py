@@ -84,6 +84,8 @@ def read_bot_state(bot, fleet_root):
         "last_run": None,
         "day_pnl": None,
         "realized_pnl": None,
+        "wins": None,
+        "losses": None,
     }
 
     if not bot.get("state"):
@@ -101,20 +103,19 @@ def read_bot_state(bot, fleet_root):
 
     if shape == "grid":
         status["open_positions"] = _open_positions_from_grid_shape(data)
-        stats = data.get("stats") or {}
-        status["day_pnl"] = stats.get("dayPnl")
-        status["realized_pnl"] = stats.get("realizedPnl")
-        status["last_run"] = data.get("lastRun")
     elif shape == "positions":
         status["open_positions"] = _open_positions_from_positions_shape(data)
-        # sum booked pnl across symbols as a rough realized figure
-        total = 0
-        for p in (data.get("positions") or {}).values():
-            total += p.get("bookedPnl", 0) or 0
-        status["realized_pnl"] = round(total, 4)
-        status["last_run"] = data.get("lastRun")
     else:
         status["note"] = "unknown state shape"
+
+    # Both shapes carry a top-level "stats" block with cumulative figures;
+    # grid additionally tracks its own dayPnl.
+    stats = data.get("stats") or {}
+    status["realized_pnl"] = stats.get("realizedPnl")
+    status["day_pnl"] = stats.get("dayPnl")  # None for bots that don't track it
+    status["wins"] = stats.get("wins")
+    status["losses"] = stats.get("losses")
+    status["last_run"] = data.get("lastRun")
 
     return status
 

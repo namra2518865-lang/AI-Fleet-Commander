@@ -21,6 +21,21 @@ def _fmt_money(v):
     return f"${v:,.2f}"
 
 
+def _fmt_pnl(v):
+    """Signed P&L with colour markup (green up, red down)."""
+    if v is None:
+        return "-"
+    sign = "+" if v >= 0 else "-"
+    txt = f"{sign}${abs(v):,.2f}"
+    if not RICH:
+        return txt
+    if v > 0:
+        return f"[green]{txt}[/green]"
+    if v < 0:
+        return f"[red]{txt}[/red]"
+    return f"[dim]{txt}[/dim]"
+
+
 def _state_text(bot_state):
     open_pos = bot_state["open_positions"]
     if not bot_state["available"]:
@@ -32,15 +47,17 @@ def _state_text(bot_state):
     return "flat"
 
 
-def build_report(bot_states, bot_balances, guard_status):
+def build_report(bot_states, bot_balances, guard_status, daily_pnl=None):
     """Return the report as a string (also prints if rich is available)."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     bot_balances = bot_balances or {}
+    daily_pnl = daily_pnl or {}
 
     def bal_for(n):
         return (bot_balances.get(n) or {}).get("usdt")
 
     total_balance = sum(v for v in (bal_for(b["n"]) for b in bot_states) if v)
+    total_day = sum(v for v in (daily_pnl.get(b["n"]) for b in bot_states) if v)
     in_trade = sum(1 for b in bot_states if b["available"] and b["open_positions"])
 
     if RICH:
@@ -62,8 +79,10 @@ def build_report(bot_states, bot_balances, guard_status):
         )
 
         t = Table(box=box.SIMPLE_HEAVY, expand=False, title="Bots")
-        for col in ["#", "Strategy", "Venue", "State", "Balance", "Realized PnL"]:
-            t.add_column(col, no_wrap=(col in ("#", "Venue", "Balance")))
+        for col in ["#", "Strategy", "Venue", "State", "Balance",
+                    "Day P&L", "Total P&L"]:
+            t.add_column(col, no_wrap=(col in ("#", "Venue", "Balance",
+                                               "Day P&L", "Total P&L")))
         for bs in bot_states:
             n = bs["n"]
             bal = bal_for(n)
@@ -71,17 +90,18 @@ def build_report(bot_states, bot_balances, guard_status):
             bal_txt = _fmt_money(bal)
             if bal is None and binfo.get("note"):
                 bal_txt = f"[dim]{binfo['note'][:18]}[/dim]"
-            pnl = bs.get("realized_pnl")
             t.add_row(
                 str(n), bs["name"], f"{bs['exchange']}/{bs['market']}",
                 _state_text(bs), bal_txt,
-                _fmt_money(pnl) if pnl is not None else "-",
+                _fmt_pnl(daily_pnl.get(n)),
+                _fmt_pnl(bs.get("realized_pnl")),
             )
         console.print(t)
 
         console.print(
             f"[bold]Bots in trade: {in_trade}/{len(bot_states)}"
-            f"   |   Total live USDT: {_fmt_money(total_balance)}[/bold]"
+            f"   |   Total live USDT: {_fmt_money(total_balance)}"
+            f"   |   Today: {_fmt_pnl(total_day)}[/bold]"
         )
         return console.export_text()
 
@@ -94,19 +114,23 @@ def build_report(bot_states, bot_balances, guard_status):
         f"Event:{'ON' if g['event_guard'] else 'OFF'}  "
         f"Kill:{'ACTIVE' if ks else 'armed' if ks is not None else 'unknown'}"
     )
-    lines.append("-" * 72)
-    lines.append(f"{'#':<3}{'Strategy':<22}{'Venue':<17}{'State':<22}{'Balance':>10}")
+    lines.append("-" * 84)
+    lines.append(
+        f"{'#':<3}{'Strategy':<20}{'Venue':<16}{'State':<20}"
+        f"{'Balance':>10}{'Day':>10}"
+    )
     for bs in bot_states:
         state = _state_text(bs)
         bal = bal_for(bs["n"])
         lines.append(
-            f"{bs['n']:<3}{bs['name']:<22}{bs['exchange']+'/'+bs['market']:<17}"
-            f"{state:<22}{_fmt_money(bal):>10}"
+            f"{bs['n']:<3}{bs['name']:<20}{bs['exchange']+'/'+bs['market']:<16}"
+            f"{state:<20}{_fmt_money(bal):>10}{_fmt_pnl(daily_pnl.get(bs['n'])):>10}"
         )
-    lines.append("-" * 72)
+    lines.append("-" * 84)
     lines.append(
         f"Bots in trade: {in_trade}/{len(bot_states)}   "
-        f"Total live USDT: {_fmt_money(total_balance)}"
+        f"Total live USDT: {_fmt_money(total_balance)}   "
+        f"Today: {_fmt_pnl(total_day)}"
     )
     text = "\n".join(lines)
     print(text)

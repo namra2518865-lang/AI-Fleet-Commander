@@ -16,6 +16,7 @@ import argparse
 import os
 import sys
 
+from dashboard.daily_pnl import compute_daily_pnl
 from dashboard.exchange_reader import read_all_bot_balances
 from dashboard.fleet_config import FLEET
 from dashboard.guard_status import read_guard_status
@@ -50,12 +51,14 @@ def main(argv=None):
     bot_states = read_all_states(fleet_root)
     guard_status = read_guard_status(fleet_root)
 
+    daily = compute_daily_pnl(bot_states, fleet_root)
+
     if args.no_exchange:
         bot_balances = {}
     else:
         bot_balances = read_all_bot_balances(FLEET, fleet_root)
 
-    build_report(bot_states, bot_balances, guard_status)
+    build_report(bot_states, bot_balances, guard_status, daily)
 
 
 if __name__ == "__main__":
