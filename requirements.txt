@@ -1,2 +1,8 @@
 # AI Fleet Commander
-# Currently standard-library only. Add third-party packages here as needed.
+
+# Dashboard (dashboard/ package)
+ccxt>=4.0.0          # read-only exchange balance/position lookups
+rich>=13.0.0         # terminal report formatting
+python-dotenv>=1.0.0 # load .env config
+
+# Core backend (backend/ package) is standard-library only.
