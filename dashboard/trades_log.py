@@ -67,15 +67,23 @@ def _parse_standard_row(row):
 
 
 def _parse_compact_row(row):
-    """time,action,symbol,side,price,qty,notional,pnl,reason -> event or None."""
+    """Compact 9-col format -> event or None.
+
+    Covers two column layouts that share positions:
+      time,action,symbol,side,price,qty,notional,pnl,reason   (bots 1/5/8/10)
+      time,event, pair,  price,usd,baseQty,avgEntry,pnl,note  (bot 7)
+    Both put the action/event in col1, symbol/pair in col2, pnl in col7.
+    """
     if len(row) < 8:
         return None
     action = (row[1] or "").strip().upper()
     symbol = row[2] if len(row) > 2 else ""
+    reason = row[-1] if row else ""
     pnl = _num(row[7])
-    if action == "PARTIAL":
+    is_partial = "PARTIAL" in action or "partial" in (reason or "").lower()
+    if is_partial:
         return {"symbol": symbol, "side": action, "pnl": pnl, "partial": True}
-    if pnl is not None:  # SELL/BUY/CLOSE with a realized pnl
+    if pnl is not None:  # SELL/BUY/CLOSE/SELL_CLOSE with a realized pnl
         return {"symbol": symbol, "side": action, "pnl": pnl, "partial": False}
     return None  # entry (empty pnl) / noise
 
