@@ -91,6 +91,8 @@ def build_report(bot_states, exchange_data, guard_status):
                 f"{p['symbol']}({p['side']})" for p in pos
             ) or ("-" if d["available"] else "")
             note = d.get("note", "")
+            if not note and d.get("source"):
+                note = f"via {d['source']}"
             et.add_row(ex, _fmt_money(usdt), pos_txt,
                        f"[dim]{note}[/dim]" if note else "")
         console.print(et)

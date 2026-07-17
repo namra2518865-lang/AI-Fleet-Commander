@@ -55,7 +55,7 @@ def main(argv=None):
                               "note": "skipped (--no-exchange)", "usdt": None,
                               "open_positions": []} for ex in EXCHANGES}
     else:
-        exchange_data = read_all_exchanges(EXCHANGES)
+        exchange_data = read_all_exchanges(EXCHANGES, fleet_root)
 
     build_report(bot_states, exchange_data, guard_status)
 

@@ -1,23 +1,57 @@
 """Fleet-wide guard status.
 
 Reports the configured state of the three guards (Market Guard, Event Guard,
-Kill-Switch) from environment flags, plus the live kill-switch state if a
-state file is provided. This is a read-only summary — it does not arm, reset,
-or change any guard.
+Kill-Switch). Guard flags are read from the dashboard's own env first, then
+fall back to a representative bot's .env under FLEET_ROOT — so the status
+reflects the live fleet without any extra setup. Read-only: it never arms,
+resets, or changes any guard.
 """
 
 import json
 import os
 
+# Bot whose .env is read as the representative fleet guard config.
+_GUARD_SOURCE_DIR = "bot2"
 
-def _flag(name, default="off"):
-    return os.getenv(name, default).strip().lower() in ("1", "true", "on", "yes")
+
+def _truthy(v):
+    return str(v).strip().lower() in ("1", "true", "on", "yes")
+
+
+def _parse_env_file(path):
+    out = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return out
+
+
+def _flag(name, bot_env, default=False):
+    val = os.getenv(name)
+    if val is not None:
+        return _truthy(val)
+    if name in bot_env:
+        return _truthy(bot_env[name])
+    return default
 
 
 def read_guard_status(fleet_root=None):
+    bot_env = {}
+    if fleet_root:
+        bot_env = _parse_env_file(
+            os.path.join(fleet_root, _GUARD_SOURCE_DIR, ".env")
+        )
+
     status = {
-        "market_guard": _flag("MARKET_GUARD"),
-        "event_guard": _flag("EVENT_GUARD"),
+        "market_guard": _flag("MARKET_GUARD", bot_env),
+        "event_guard": _flag("EVENT_GUARD", bot_env),
         "kill_switch_configured": True,
         "kill_switch_active": None,
         "kill_note": "",
