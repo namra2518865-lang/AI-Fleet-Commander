@@ -16,12 +16,39 @@ Per-exchange var names differ (BingX/KuCoin use *_API_SECRET, others
 """
 
 import os
+import socket
 
 try:
     import ccxt
     CCXT_AVAILABLE = True
 except ImportError:
     CCXT_AVAILABLE = False
+
+_ipv4_patched = False
+
+
+def _force_ipv4():
+    """Make all outbound connections prefer IPv4.
+
+    Exchange API keys are usually IP-whitelisted to the VPS's IPv4 address,
+    but Python may route over IPv6 (which the exchange then rejects). This
+    filters DNS results to IPv4 so requests come from the whitelisted IP.
+    Enabled unless FORCE_IPV4=off.
+    """
+    global _ipv4_patched
+    if _ipv4_patched:
+        return
+    if os.getenv("FORCE_IPV4", "on").strip().lower() not in ("1", "true", "on", "yes"):
+        return
+    _orig = socket.getaddrinfo
+
+    def _gai(host, port, family=0, *args, **kwargs):
+        results = _orig(host, port, family, *args, **kwargs)
+        v4 = [r for r in results if r[0] == socket.AF_INET]
+        return v4 or results
+
+    socket.getaddrinfo = _gai
+    _ipv4_patched = True
 
 # exchange id -> ccxt class name
 _CCXT_CLASS = {
@@ -155,4 +182,5 @@ def read_exchange(exchange, fleet_root=None):
 
 
 def read_all_exchanges(exchanges, fleet_root=None):
+    _force_ipv4()
     return {ex: read_exchange(ex, fleet_root) for ex in exchanges}
