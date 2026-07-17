@@ -14,7 +14,7 @@ def _flag(name, default="off"):
     return os.getenv(name, default).strip().lower() in ("1", "true", "on", "yes")
 
 
-def read_guard_status(state_dir=None):
+def read_guard_status(fleet_root=None):
     status = {
         "market_guard": _flag("MARKET_GUARD"),
         "event_guard": _flag("EVENT_GUARD"),
@@ -25,10 +25,12 @@ def read_guard_status(state_dir=None):
 
     # Optional live kill-switch state file (written by the live fleet).
     ks_path = os.getenv("KILL_SWITCH_STATE")
-    if not ks_path and state_dir:
-        candidate = os.path.join(state_dir, "kill_switch.json")
-        if os.path.exists(candidate):
-            ks_path = candidate
+    if not ks_path and fleet_root:
+        for candidate in ("kill_switch.json", "bot_healthstate.json"):
+            p = os.path.join(fleet_root, candidate)
+            if os.path.exists(p):
+                ks_path = p
+                break
 
     if ks_path and os.path.exists(ks_path):
         try:

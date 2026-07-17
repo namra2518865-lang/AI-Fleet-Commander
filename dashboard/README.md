@@ -13,7 +13,9 @@ reports it.
 
 ## Data sources (both combined)
 
-1. **Bot state files** — the JSON each bot writes (`STATE_DIR`). Works offline.
+1. **Bot state files** — the `position.json` each bot writes under
+   `FLEET_ROOT/<bot-dir>/` (VPS: `/root/bot/`, `/root/bot2/` … `/root/bot11/`).
+   Works offline. The grid-vs-positions shape is auto-detected.
 2. **Exchange read-only API** (via `ccxt`) — live balances/positions for the
    6 venues (Binance, Bybit, BitGet, OKX, BingX, KuCoin).
 
@@ -28,7 +30,7 @@ cp .env.example .env                 # then edit .env
 ```
 
 In `.env` set:
-- `STATE_DIR` — folder with the bots' `*.json` state files
+- `FLEET_ROOT` — dir holding each bot's folder + `/newsradar` (VPS: `/root`)
 - **read-only** exchange API keys (leave blank to skip a venue)
 
 > Use keys with **read-only / view** permission only. The tool never trades,
@@ -39,15 +41,17 @@ In `.env` set:
 ```bash
 py -m dashboard.commander                 # full report (state files + exchanges)
 py -m dashboard.commander --no-exchange    # offline: state files only
-py -m dashboard.commander --state-dir DIR  # override STATE_DIR
+py -m dashboard.commander --root /root     # override FLEET_ROOT
 ```
+
+On the VPS use `python3` instead of `py`.
 
 ## Files
 
 | File | Role |
 |---|---|
 | `fleet_config.py`  | Static 11-bot fleet map (bot -> exchange/market/strategy/state file) |
-| `state_reader.py`  | Reads bot state files (grid + positions shapes), degrades gracefully |
+| `state_reader.py`  | Reads bot `position.json` (auto-detects grid/positions shape), degrades gracefully |
 | `exchange_reader.py` | ccxt read-only balance + positions per exchange |
 | `guard_status.py`  | Market/Event/Kill-Switch status |
 | `report.py`        | Renders the terminal report (rich, plain-text fallback) |

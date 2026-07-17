@@ -60,7 +60,17 @@ def _open_positions_from_grid_shape(data):
     return open_pos
 
 
-def read_bot_state(bot, state_dir):
+def _detect_shape(data, hint):
+    """Auto-detect the state-file shape from its keys; hint is a fallback."""
+    if isinstance(data, dict):
+        if "coins" in data:
+            return "grid"
+        if "positions" in data:
+            return "positions"
+    return hint
+
+
+def read_bot_state(bot, fleet_root):
     """Return a status dict for one bot from its state file."""
     status = {
         "n": bot["n"],
@@ -80,21 +90,22 @@ def read_bot_state(bot, state_dir):
         status["note"] = "no state file (exchange-only)"
         return status
 
-    path = os.path.join(state_dir, bot["state"])
+    path = os.path.join(fleet_root, bot["state"])
     data, err = _read_json(path)
     if err:
         status["note"] = err
         return status
 
     status["available"] = True
+    shape = _detect_shape(data, bot.get("shape"))
 
-    if bot["shape"] == "grid":
+    if shape == "grid":
         status["open_positions"] = _open_positions_from_grid_shape(data)
         stats = data.get("stats") or {}
         status["day_pnl"] = stats.get("dayPnl")
         status["realized_pnl"] = stats.get("realizedPnl")
         status["last_run"] = data.get("lastRun")
-    elif bot["shape"] == "positions":
+    elif shape == "positions":
         status["open_positions"] = _open_positions_from_positions_shape(data)
         # sum booked pnl across symbols as a rough realized figure
         total = 0
@@ -102,9 +113,11 @@ def read_bot_state(bot, state_dir):
             total += p.get("bookedPnl", 0) or 0
         status["realized_pnl"] = round(total, 4)
         status["last_run"] = data.get("lastRun")
+    else:
+        status["note"] = "unknown state shape"
 
     return status
 
 
-def read_all_states(state_dir):
-    return [read_bot_state(bot, state_dir) for bot in FLEET]
+def read_all_states(fleet_root):
+    return [read_bot_state(bot, fleet_root) for bot in FLEET]

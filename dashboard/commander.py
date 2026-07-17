@@ -36,19 +36,19 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Aquora Fleet Commander (read-only)")
     parser.add_argument("--no-exchange", action="store_true",
                         help="skip live exchange lookups; use state files only")
-    parser.add_argument("--state-dir", default=None,
-                        help="override STATE_DIR (where bot *.json state files live)")
+    parser.add_argument("--root", default=None,
+                        help="override FLEET_ROOT (dir holding /bot*, /newsradar)")
     args = parser.parse_args(argv)
 
     _load_dotenv()
 
-    state_dir = args.state_dir or os.getenv("STATE_DIR", ".")
-    if not os.path.isdir(state_dir):
-        print(f"[warn] STATE_DIR not found: {state_dir} "
-              f"(set STATE_DIR in .env or pass --state-dir)", file=sys.stderr)
+    fleet_root = args.root or os.getenv("FLEET_ROOT", "/root")
+    if not os.path.isdir(fleet_root):
+        print(f"[warn] FLEET_ROOT not found: {fleet_root} "
+              f"(set FLEET_ROOT in .env or pass --root)", file=sys.stderr)
 
-    bot_states = read_all_states(state_dir)
-    guard_status = read_guard_status(state_dir)
+    bot_states = read_all_states(fleet_root)
+    guard_status = read_guard_status(fleet_root)
 
     if args.no_exchange:
         exchange_data = {ex: {"exchange": ex, "available": False,
